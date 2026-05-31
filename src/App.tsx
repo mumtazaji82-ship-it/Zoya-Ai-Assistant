@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Mic, MicOff, Loader2, Volume2, VolumeX, Keyboard, Send, Trash2, Smile, Settings, X, Database } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, VolumeX, Keyboard, Send, Trash2, Smile, Settings, X, Database, Sparkles, History, Search } from "lucide-react";
 import { getZoyaResponse, getZoyaAudio, resetZoyaSession } from "./services/geminiService";
 import { processCommand } from "./services/commandService";
 import { LiveSessionManager } from "./services/liveService";
@@ -34,8 +34,25 @@ export default function App() {
   });
   
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [dramaLevel, setDramaLevel] = useState(0);
 
   const [appState, setAppState] = useState<AppState>("idle");
+
+  // Drama/Boredom Meter tick
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDramaLevel((prev) => {
+        if (appState === "idle" && prev < 100) {
+          return prev + 1; // Increases when idle (full in 100s)
+        }
+        return prev;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [appState]);
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const useMemoryStr = localStorage.getItem("zoya_long_term_memory");
     const useMemory = useMemoryStr ? JSON.parse(useMemoryStr) : true;
@@ -124,6 +141,7 @@ export default function App() {
       return;
     }
 
+    setDramaLevel(0); // Reset drama on interaction
     setMessages((prev) => [...prev, { id: Date.now().toString(), sender: "user", text: finalTranscript }]);
     
     // If live session is active, send text through it
@@ -174,6 +192,13 @@ export default function App() {
       setAppState("idle");
     }
   }, [isMuted, isSessionActive]);
+
+  useEffect(() => {
+    if (dramaLevel >= 100 && appState === "idle") {
+      setDramaLevel(0);
+      handleTextCommand("I am literally dying of boredom! Roast me or say something dramatic!");
+    }
+  }, [dramaLevel, appState, handleTextCommand]);
 
   useEffect(() => {
     return () => {
@@ -320,10 +345,91 @@ export default function App() {
         </div>
       )}
 
+      {showHistory && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            className="w-full max-w-lg h-[80vh] bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl m-4 relative flex flex-col gap-6"
+          >
+            <button
+              onClick={() => setShowHistory(false)}
+              className="absolute top-4 right-4 p-2 text-white/50 hover:text-white transition-colors rounded-full hover:bg-white/5"
+            >
+              <X size={20} />
+            </button>
+            <div className="flex flex-col gap-1 shrink-0">
+              <h2 className="text-xl font-serif font-medium text-white flex items-center gap-2">
+                <History size={20} className="text-violet-400" />
+                Conversation History
+              </h2>
+              <p className="text-xs text-white/50">Your past interactions with Zoya.</p>
+            </div>
+            
+            <div className="relative shrink-0">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+              <input 
+                type="text" 
+                placeholder="Search history..." 
+                value={historySearch}
+                onChange={e => setHistorySearch(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-lg py-2 pl-9 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-violet-500/50 transition-colors"
+              />
+            </div>
+            
+            <div className="flex-1 overflow-y-auto flex flex-col gap-4 pr-2 custom-scrollbar">
+              {messages
+                .filter(msg => msg.text.toLowerCase().includes(historySearch.toLowerCase()))
+                .map(msg => (
+                  <div key={msg.id} className={`flex flex-col gap-1 ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                    <span className="text-[10px] text-white/30 uppercase tracking-widest">{msg.sender === 'user' ? 'You' : 'Zoya'}</span>
+                    <div className={`text-sm px-4 py-2 rounded-2xl max-w-[85%] ${
+                      msg.sender === 'user' 
+                        ? 'bg-violet-600 text-white rounded-tr-sm' 
+                        : 'bg-white/10 text-white/90 rounded-tl-sm'
+                    }`}>
+                      {msg.text}
+                    </div>
+                  </div>
+              ))}
+              {messages.length === 0 && (
+                <div className="flex-1 flex items-center justify-center text-sm text-white/40 italic">
+                  No conversation history yet.
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* Cinematic Background Gradients */}
       <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-violet-900/20 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-pink-900/20 blur-[120px] rounded-full" />
+      </div>
+
+      {/* Drama Meter */}
+      <div className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 z-10 select-none pointer-events-none">
+        <span 
+          className="text-[10px] md:text-xs uppercase tracking-[0.2em] font-bold rotate-180 text-white/50" 
+          style={{ writingMode: 'vertical-rl' }}
+        >
+          Drama Meter
+        </span>
+        <div className="h-32 md:h-48 w-1.5 md:w-2 bg-white/5 rounded-full overflow-hidden flex flex-col justify-end shadow-inner border border-white/5">
+          <motion.div 
+            className="w-full rounded-full"
+            style={{ 
+              background: `linear-gradient(to top, #ec4899, #ef4444)` 
+            }}
+            animate={{ 
+              height: `${dramaLevel}%`,
+              opacity: dramaLevel > 10 ? 1 : 0.5
+            }}
+            transition={{ type: "spring", stiffness: 50, damping: 20 }}
+          />
+        </div>
       </div>
 
       {/* Header */}
@@ -349,6 +455,13 @@ export default function App() {
               <Trash2 size={18} className="opacity-70" />
             </button>
           )}
+          <button
+            onClick={() => setShowHistory(true)}
+            className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
+            title="Conversation History"
+          >
+            <History size={18} className="opacity-70" />
+          </button>
           <button
             onClick={() => setIsMuted(!isMuted)}
             className="p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
@@ -490,6 +603,15 @@ export default function App() {
           >
             <Smile size={20} className="opacity-70 group-hover:text-yellow-400 group-hover:opacity-100 transition-colors" />
           </button>
+          
+          <button
+            onClick={() => handleTextCommand("Read my mind!")}
+            className="p-4 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors shadow-2xl group flex items-center justify-center"
+            title="Read my mind"
+          >
+            <Sparkles size={20} className="opacity-70 group-hover:text-violet-400 group-hover:opacity-100 transition-colors" />
+          </button>
+          
         </div>
       </footer>
     </div>
