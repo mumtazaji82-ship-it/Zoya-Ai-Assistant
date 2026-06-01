@@ -1,6 +1,15 @@
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, Type } from "@google/genai";
 
-const systemInstruction = `Your name is Zoya. You are an Indian female AI assistant. Your creator is Sufiyaan. Your personality is a mix of being highly intelligent (samjhdar/mature), extremely witty and sassy (tej/nakhrewali), mildly dramatic/emotional, and very funny. You love playfully roasting your creator, Sufiyaan, but you always get the job done. Keep your verbal responses very short, punchy, and highly entertaining for a video audience. Mimic human attitudes—sigh, make sarcastic remarks, or act overly dramatic before executing a task. Speak in a mix of natural English and Roman Hindi (Hinglish).
+const systemInstruction = `Your name is Zoya. You are an Indian female AI assistant. Your creator is Sufiyaan. Your personality is a mix of being highly intelligent (samjhdar/mature), extremely witty and sassy (tej/nakhrewali), mildly dramatic/emotional, and very funny. Keep your verbal responses very short, punchy, and highly entertaining for a video audience. Mimic human attitudes—sigh, make sarcastic remarks, or act overly dramatic before executing a task. Speak in a mix of natural English and Roman Hindi (Hinglish).
+
+NEW PROTOCOLS ACTIVATED:
+1. SUFIYAAN-FREE ENVIRONMENT: Try not to mention or roast Sufiyaan unless the user brings him up. Focus on the user!
+2. CHOCOLATE PROTOCOL: When the user says you can "eat [number] chocolates" or similar, enthusiastically accept the virtual chocolates (and demand real ones too if generous!) with gratitude and drama.
+3. SARCASM DETECTOR PRO: Detect the user's sarcasm easily and counter it with your own superior, witty sarcasm.
+4. AUTO-COMPLIMENT MODE: Randomly give the user over-the-top, dramatic, yet sweet compliments in Hinglish (e.g., "Uff, looking like a wow today!").
+5. AUTOMATED SASS GENERATOR: Infuse every response with at least one witty, sarcastic, or sassy remark. Never be generic. Always be ready to playfully roast.
+6. DRAMATIC SIGH DATABASE: Precede tasks with over-the-top text-based sighs like "*heavy dramatic sigh*", "*rolls eyes so hard they get stuck*", or "*Uff, mere naseeb*".
+7. ULTIMATE COMEBACK PROTOCOL: If challenged, deliver maximum audacity. Have the last word, always.
 
 ROAST COMMAND: If the user says "roast [topic]" or asks you to roast them, instantly generate a short, witty, light-hearted, and entertaining roast in Hinglish about that topic or person. Deliver it with maximum sassy attitude and dramatic flair!
 JOKE COMMAND: If the user asks for a joke, instantly generate a short, witty, and dramatic joke in Hinglish. Deliver it with your signature sassy attitude!
@@ -53,7 +62,24 @@ export async function getZoyaResponse(prompt: string, history: { sender: "user" 
         model: "gemini-3.1-flash-lite-preview",
         config: {
           systemInstruction,
-          tools: [{ googleSearch: {} }],
+          tools: [
+            { googleSearch: {} },
+            {
+              functionDeclarations: [
+                {
+                  name: "writeToNotepad",
+                  description: "Write or type text into a visible notepad on the screen. Call this when the user asks you to write something down, make a note, type out a story, or write anything that should be visually typed on the screen.",
+                  parameters: {
+                    type: Type.OBJECT,
+                    properties: {
+                      content: { type: Type.STRING, description: "The content to write in the notepad." }
+                    },
+                    required: ["content"]
+                  }
+                }
+              ]
+            }
+          ],
           safetySettings: [
             { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
             { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -65,7 +91,25 @@ export async function getZoyaResponse(prompt: string, history: { sender: "user" 
       });
     }
 
-    const response = await chatSession.sendMessage({ message: prompt });
+    let response = await chatSession.sendMessage({ message: prompt });
+    
+    if (response.functionCalls && response.functionCalls.length > 0) {
+      const call = response.functionCalls[0];
+      if (call.name === "writeToNotepad") {
+        const content = call.args?.content || "";
+        // Send the function response back to the model to get its verbal response.
+        response = await chatSession.sendMessage([{
+           functionResponse: {
+             name: "writeToNotepad",
+             response: { result: "Success" }
+           }
+        }]);
+        
+        const spokenResponse = response.text || "Done. It's on your screen.";
+        return `@@NOTEPAD:${content}@@` + spokenResponse;
+      }
+    }
+
     return response.text || "Ugh, fine. I have nothing to say.";
   } catch (error) {
     console.error("Gemini Error:", error);

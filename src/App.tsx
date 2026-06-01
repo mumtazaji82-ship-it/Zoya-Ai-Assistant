@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Mic, MicOff, Loader2, Volume2, VolumeX, Keyboard, Send, Trash2, Smile, Settings, X, Database, Sparkles, History, Search } from "lucide-react";
+import { Mic, MicOff, Loader2, Volume2, VolumeX, Keyboard, Send, Trash2, Smile, Settings, X, Database, Sparkles, History, Search, Video, VideoOff, MonitorUp, MonitorOff } from "lucide-react";
 import { getZoyaResponse, getZoyaAudio, resetZoyaSession } from "./services/geminiService";
 import { processCommand } from "./services/commandService";
 import { LiveSessionManager } from "./services/liveService";
 import Visualizer from "./components/Visualizer";
 import PermissionModal from "./components/PermissionModal";
+import Notepad from "./components/Notepad";
 import { playPCM } from "./utils/audioUtils";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -39,6 +40,7 @@ export default function App() {
   const [dramaLevel, setDramaLevel] = useState(0);
 
   const [appState, setAppState] = useState<AppState>("idle");
+  const [captureMode, setCaptureMode] = useState<"none" | "camera" | "screen">("none");
 
   // Drama/Boredom Meter tick
   useEffect(() => {
@@ -123,6 +125,8 @@ export default function App() {
   const [textInput, setTextInput] = useState("");
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const [notepadContent, setNotepadContent] = useState("");
+  const [showNotepad, setShowNotepad] = useState(false);
 
   const liveSessionRef = useRef<LiveSessionManager | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -177,9 +181,18 @@ export default function App() {
         }
       }, 1500);
     } else {
-      // 2. General Chit-Chat via Gemini
       let historyToSend = useLongTermMemory ? messagesRef.current : [];
-      responseText = await getZoyaResponse(finalTranscript, historyToSend);
+      let rawResponse = await getZoyaResponse(finalTranscript, historyToSend);
+      
+      const notepadMatch = rawResponse.match(/@@NOTEPAD:([\s\S]*?)@@/);
+      if (notepadMatch) {
+         setNotepadContent(notepadMatch[1]);
+         setShowNotepad(true);
+         responseText = rawResponse.replace(/@@NOTEPAD:[\s\S]*?@@/, "");
+      } else {
+         responseText = rawResponse;
+      }
+
       setMessages((prev) => [...prev, { id: Date.now().toString() + "-z", sender: "zoya", text: responseText }]);
       
       if (!isMuted) {
@@ -208,9 +221,30 @@ export default function App() {
     };
   }, []);
 
+  const toggleCamera = useCallback(async () => {
+    if (!liveSessionRef.current || !isSessionActive) {
+      alert("Please start the session first to share your camera!");
+      return;
+    }
+    const newMode = captureMode === "camera" ? "none" : "camera";
+    setCaptureMode(newMode);
+    await liveSessionRef.current.setCaptureMode(newMode);
+  }, [captureMode, isSessionActive]);
+
+  const toggleScreenShare = useCallback(async () => {
+    if (!liveSessionRef.current || !isSessionActive) {
+      alert("Please start the session first to share your screen!");
+      return;
+    }
+    const newMode = captureMode === "screen" ? "none" : "screen";
+    setCaptureMode(newMode);
+    await liveSessionRef.current.setCaptureMode(newMode);
+  }, [captureMode, isSessionActive]);
+
   const toggleListening = async () => {
     if (isSessionActive) {
       setIsSessionActive(false);
+      setCaptureMode("none");
       if (liveSessionRef.current) {
         liveSessionRef.current.stop();
         liveSessionRef.current = null;
@@ -238,6 +272,11 @@ export default function App() {
           setTimeout(() => {
             window.open(url, "_blank");
           }, 1000);
+        };
+        
+        session.onNotepadWrite = (text) => {
+          setNotepadContent(text);
+          setShowNotepad(true);
         };
 
         await session.start();
@@ -408,6 +447,15 @@ export default function App() {
         <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] bg-violet-900/20 blur-[120px] rounded-full" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-pink-900/20 blur-[120px] rounded-full" />
       </div>
+
+      <AnimatePresence>
+        {showNotepad && (
+          <Notepad 
+            content={notepadContent} 
+            onClose={() => setShowNotepad(false)} 
+          />
+        )}
+      </AnimatePresence>
 
       {/* Drama Meter */}
       <div className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 flex flex-col items-center gap-3 z-10 select-none pointer-events-none">
@@ -594,6 +642,25 @@ export default function App() {
             >
               <Keyboard size={20} className="opacity-70" />
             </button>
+          )}
+
+          {isSessionActive && (
+            <>
+              <button
+                onClick={toggleCamera}
+                className={`p-4 rounded-full border transition-colors shadow-2xl ${captureMode === 'camera' ? 'bg-violet-500/20 text-violet-400 border-violet-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                title={captureMode === 'camera' ? "Stop Camera" : "Share Camera"}
+              >
+                {captureMode === 'camera' ? <Video size={20} /> : <VideoOff size={20} className="opacity-70" />}
+              </button>
+              <button
+                onClick={toggleScreenShare}
+                className={`p-4 rounded-full border transition-colors shadow-2xl ${captureMode === 'screen' ? 'bg-violet-500/20 text-violet-400 border-violet-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                title={captureMode === 'screen' ? "Stop Screen Share" : "Share Screen"}
+              >
+                {captureMode === 'screen' ? <MonitorUp size={20} /> : <MonitorOff size={20} className="opacity-70" />}
+              </button>
+            </>
           )}
           
           <button
